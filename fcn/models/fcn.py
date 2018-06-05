@@ -19,7 +19,7 @@ def get_upsampling_weight(in_channels, out_channels, kernel_size):
 
 class FCN8(nn.Module):
   def __init__(self, num_classes=21, input_channel=3):
-    super(FCN8).__init__()
+    super(FCN8, self).__init__()
     # conv1
     self.conv1_1 = nn.Conv2d(input_channel, 64, 3, padding=100)
     self.relu1_1 = nn.ReLU(inplace=True)
@@ -91,8 +91,8 @@ class FCN8(nn.Module):
         initial_weight = get_upsampling_weight(m.in_channels, m.out_channels, m.kernel_size[0])
         m.weight.data.copy_(initial_weight)
 
-  def forward(self, x):
-    x = self.relu1_1(self.conv1_1(x))
+  def forward(self, input):
+    x = self.relu1_1(self.conv1_1(input))
     x = self.relu1_2(self.conv1_2(x))
     x = self.pool1(x)
 
@@ -115,7 +115,7 @@ class FCN8(nn.Module):
     x = self.relu5_1(self.conv5_1(x))
     x = self.relu5_2(self.conv5_2(x))
     x = self.relu5_3(self.conv5_3(x))
-    x = self.pool5(x)
+    x = self.pool5(x) # 1/32
 
     x = self.relu6(self.fc6(x))
     x = self.drop6(x)
@@ -143,6 +143,6 @@ class FCN8(nn.Module):
 
     x = self.upscore8(x)
 
-    x = x[:, :, 31:31 + x.size()[2], 31:31 + x.size()[3]].contiguous()
+    x = x[:, :, 31:31 + input.size()[2], 31:31 + input.size()[3]].contiguous()
 
     return x

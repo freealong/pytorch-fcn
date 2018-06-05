@@ -79,7 +79,9 @@ class Trainer(object):
         self.global_step += 1
         # calculate loss and metrics
         running_loss += loss.item()
-        val_metrics = self._add_metrics(self.measure(labels, outputs, num_class), val_metrics)
+        pred_labels = outputs.max(1)[1].detach().numpy()[:, :, :]
+        true_labels = labels.detach().numpy()
+        val_metrics = self._add_metrics(self.measure(true_labels, pred_labels, num_class), val_metrics)
         # print and log
         if i % self.print_freq == 0:
           running_loss /= self.print_freq * len(inputs)
@@ -135,9 +137,16 @@ class Trainer(object):
       self.model.train()
 
   def _add_metrics(self, A, B):
-    for name, value in A.items():
-      A[name] += B[name]
-    return A
+    if len(A) == 0 and len(B) == 0:
+      return {}
+    elif len(A) == 0 and len(B) != 0:
+      return B
+    elif len(A) != 0 and len(B) == 0:
+      return A
+    else:
+      for name, value in A.items():
+        A[name] += B[name]
+      return A
 
   def _mean_metrics(self, m, num):
     if len(m) == 0:
