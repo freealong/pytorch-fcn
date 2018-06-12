@@ -79,8 +79,8 @@ class Trainer(object):
         self.global_step += 1
         # calculate loss and metrics
         running_loss += loss.item()
-        pred_labels = outputs.max(1)[1].detach().numpy()[:, :, :]
-        true_labels = labels.detach().numpy()
+        pred_labels = outputs.max(1)[1].cpu().detach().numpy()[:, :, :]
+        true_labels = labels.cpu().detach().numpy()
         val_metrics = self._add_metrics(self.measure(true_labels, pred_labels, num_class), val_metrics)
         # print and log
         if i % self.print_freq == 0:
