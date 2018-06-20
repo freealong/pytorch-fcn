@@ -9,7 +9,8 @@ class Trainer(object):
   def __init__(self, model, optimizer, criterion, measure,
                train_loader, val_loader, max_iter,
                print_freq, interval_eval, writer,
-               ckp_path, resume_ckp_num=0):
+               ckp_path, resume_ckp_num=0,
+               gpu_ids=[]):
     self.global_step = 0
     self.model = model
     self.optimizer = optimizer
@@ -25,9 +26,10 @@ class Trainer(object):
       self.interval_eval = interval_eval
     self.writer = writer
     # visualize graph if tensorboardX available
-    if self.writer != None:
-      dummy_input, _ = iter(self.train_loader).next()
-      self.writer.add_graph(self.model, (dummy_input,))
+#    if self.writer != None:
+#      dummy_input, _ = iter(self.train_loader).next()
+#      self.writer.add_graph(self.model, (dummy_input,))
+
     if os.path.isdir(ckp_path):
       self.ckp_path = ckp_path
     else:
@@ -45,14 +47,15 @@ class Trainer(object):
         print("checkpoint file {} not found, training from the beginning.".format(resume_ckp_file))
 
     # using cuda if available
-    if torch.cuda.is_available():
-      print('%d gpu devices found' % torch.cuda.device_count())
-      if torch.cuda.device_count() > 1:
-        self.model = nn.DataParallel(self.model)
-      self.model = self.model.cuda()
+    self.device = torch.device('cuda:{}'.format(gpu_ids[0])) if gpu_ids else torch.device('cpu')
+    if len(gpu_ids) > 0 and torch.cuda.is_available():
+      if len(gpu_ids) > 1:
+        self.model = nn.DataParallel(self.model, gpu_ids)
+      else:
+        self.model.to(self.device)
+      print('Using gpu: ', gpu_ids)
     else:
-      print('no gpu device found, using cpu only')
-
+      print('Using cpu only')
 
   def train(self):
     max_epoch = int(math.ceil(self.max_iter / len(self.train_loader)))
@@ -68,8 +71,7 @@ class Trainer(object):
           break
         # get data
         inputs, labels = data
-        if torch.cuda.is_available():
-          inputs, labels = inputs.cuda(), labels.cuda()
+        inputs, labels = inputs.to(self.device), labels.to(self.device)
         # optimize
         self.optimizer.zero_grad()
         outputs = self.model(inputs)
@@ -83,15 +85,15 @@ class Trainer(object):
         true_labels = labels.cpu().detach().numpy()
         val_metrics = self._add_metrics(self.measure(true_labels, pred_labels, num_class), val_metrics)
         # print and log
-        if i % self.print_freq == 0:
+        if self.global_step % self.print_freq == 0:
           running_loss /= self.print_freq * len(inputs)
           val_metrics = self._mean_metrics(val_metrics, self.print_freq * len(inputs))
           print('epoch[%d/%d], iter[%d/%d], global_step[%d/%d] loss: %.3f' %
                 (epoch, max_epoch, i, len(self.train_loader), self.global_step, self.max_iter, running_loss))
           if self.writer != None:
-            self.writer.add_scalar('loss', running_loss, epoch * i)
+            self.writer.add_scalar('loss', running_loss, self.global_step)
             for name, value in val_metrics.items():
-              self.writer.add_scalar(name, value, epoch * i)
+              self.writer.add_scalar(name, value, self.global_step)
           running_loss = 0
           val_metrics = {}
 
@@ -115,13 +117,14 @@ class Trainer(object):
     val_metrics = []
     for i, data in enumerate(self.val_loader, 1):
       inputs, labels = data
-      if torch.cuda.is_available():
-        inputs, labels = inputs.cuda(), labels.cuda()
+      inputs, labels = inputs.to(self.device), labels.to(self.device)
 
       outputs = self.model(inputs)
       loss = self.criterion(outputs, labels)
       val_loss += loss.item() / len(inputs)
-      val_metrics = self._add_metrics(self.measure(labels, outputs, num_class), val_metrics)
+      pred_labels = outputs.max(1)[1].cpu().detach().numpy()[:, :, :]
+      true_labels = labels.cpu().detach().numpy()
+      val_metrics = self._add_metrics(self.measure(true_labels, pred_labels, num_class), val_metrics)
 
     val_loss /= len(self.val_loader)
     val_metrics = self._mean_metrics(val_metrics, len(self.val_loader))
