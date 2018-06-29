@@ -9,12 +9,12 @@ import tensorboardX
 
 CONFIG = {
   'max_iter': 100000,
-  'lr': 0.0001,
+  'lr': 0.00001,
   'momentum':  0.9,
   'weight_decay': 0.0005,
-  'interval_validate': 4000,
+  'interval_validate': 1000,
 
-  'batch_size': 8,
+  'batch_size': 4,
   'print_freq': 100
 }
 
@@ -26,6 +26,7 @@ def main():
   parser.add_argument('--run_dir', type=str, default='runs')
   parser.add_argument('--name', type=str, default='voc_fcn8')
   parser.add_argument('--gpu_ids', type=str, default='0', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
+  parser.add_argument('--resume_ckp_num', type=int, default=0, help='checkpoint id')
   args = parser.parse_args()
 
   str_ids = args.gpu_ids.split(',')
@@ -34,6 +35,7 @@ def main():
     id = int(str_id)
     if id >= 0:
       gpu_ids.append(id)
+  resume_ckp_num = args.resume_ckp_num
 
   if not os.path.isdir(args.run_dir):
     os.mkdir(args.run_dir)
@@ -79,7 +81,7 @@ def main():
                                 measure=measure, train_loader=train_loader, val_loader=val_loader,
                                 max_iter=CONFIG['max_iter'], print_freq=CONFIG['print_freq'],
                                 interval_eval=CONFIG['interval_validate'], writer=writer,
-                                ckp_path=ckp_dir, gpu_ids=gpu_ids)
+                                ckp_path=ckp_dir, resume_ckp_num=resume_ckp_num, gpu_ids=gpu_ids)
   trainer.train()
 
 if __name__ == '__main__':
