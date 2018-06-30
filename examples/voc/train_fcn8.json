@@ -1,0 +1,15 @@
+{
+  "max_iter": 100000,
+  "lr": 0.00001,
+  "momentum":  0.9,
+  "weight_decay": 0.0005,
+
+  "train_batch_size": 12,
+
+  "print_freq": 500,
+  "save_freq": 4000,
+
+  "eval_batch_size": 12,
+  "eval_freq": 4000
+}
+

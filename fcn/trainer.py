@@ -3,14 +3,15 @@ import os
 
 import torch
 import torch.nn as nn
+import torchvision.utils as vutils
 
 
 class Trainer(object):
   def __init__(self, model, optimizer, criterion, measure,
                train_loader, val_loader, max_iter,
-               print_freq, interval_eval, writer,
-               ckp_path, resume_ckp_num=0,
-               gpu_ids=[]):
+               print_freq, save_freq, eval_freq,
+               writer, ckp_path, resume_ckp_num=0,
+               gpu_ids=list()):
     self.global_step = 0
     self.model = model
     self.optimizer = optimizer
@@ -20,15 +21,14 @@ class Trainer(object):
     self.val_loader = val_loader
     self.max_iter = max_iter
     self.print_freq = print_freq
-    if interval_eval is None:
-      self.interval_eval = len(self.train_loader)
-    else:
-      self.interval_eval = interval_eval
+    self.save_freq = save_freq
+    self.eval_freq = eval_freq
     self.writer = writer
     # visualize graph if tensorboardX available
-#    if self.writer != None:
-#      dummy_input, _ = iter(self.train_loader).next()
-#      self.writer.add_graph(self.model, (dummy_input,))
+    # if self.writer != None and resume_ckp_num == 0:
+    #   dummy_input, _ = iter(self.val_loader).next()
+    #   self.writer.add_graph(self.model, (dummy_input[0],))
+
 
     if os.path.isdir(ckp_path):
       self.ckp_path = ckp_path
@@ -65,12 +65,10 @@ class Trainer(object):
 
   def train(self):
     max_epoch = int(math.ceil(self.max_iter / len(self.train_loader)))
-    num_class = len(self.train_loader.dataset.class_names)
 
     running_loss = 0.0
     for epoch in range(1, max_epoch + 1):
       self.model.train()
-      #val_metrics = {}
 
       for i, data in enumerate(self.train_loader, 1):
         if self.global_step >= self.max_iter:
@@ -84,32 +82,35 @@ class Trainer(object):
         loss = self.criterion(outputs, labels)
         loss.backward()
         self.optimizer.step()
+
         self.global_step += 1
-        # calculate loss and metrics
         running_loss += loss.item()
-        #pred_labels = outputs.max(1)[1].cpu().detach().numpy()[:, :, :]
-        #true_labels = labels.cpu().detach().numpy()
-        #val_metrics = self._add_metrics(self.measure(true_labels, pred_labels, num_class), val_metrics)
+
         # print and log
         if self.global_step % self.print_freq == 0:
           running_loss /= self.print_freq * len(inputs)
-          #val_metrics = self._mean_metrics(val_metrics, self.print_freq * len(inputs))
           print('epoch[%d/%d], iter[%d/%d], global_step[%d/%d] loss: %.3f' %
                 (epoch, max_epoch, i, len(self.train_loader), self.global_step, self.max_iter, running_loss))
           if self.writer != None:
             self.writer.add_scalar('loss', running_loss, self.global_step)
-            #for name, value in val_metrics.items():
-            #  self.writer.add_scalar(name, value, self.global_step)
+            input_images = vutils.make_grid(inputs.cpu().detach(), normalize=True, scale_each=True)
+            self.writer.add_image('inputs', input_images, self.global_step)
+            lables_images = vutils.make_grid(labels.cpu().detach(), normalize=True, scale_each=True)
+            self.writer.add_image('labels', lables_images, self.global_step)
+            pred_labels_images = vutils.make_grid(outputs.max(1)[1].cpu().detach(), normalize=True, scale_each=True)
+            self.writer.add_image('pred labels', pred_labels_images, self.global_step)
           running_loss = 0
-          #val_metrics = {}
 
-
-        if self.global_step % self.interval_eval == 0:
-          self.eval()
+        # save checkpoint
+        if self.save_freq != 0 and self.global_step % self.save_freq == 0:
           torch.save({'state_dict': self.model.state_dict(),
                       'optimizer': self.optimizer.state_dict(),
                       'global_step': self.global_step},
                      os.path.join(self.ckp_path, 'checkpoint_%06d.tar' % self.global_step))
+
+        # eval
+        if self.eval_freq != 0 and self.global_step % self.eval_freq == 0:
+          self.eval()
 
     print('Finish Training')
 
@@ -135,7 +136,7 @@ class Trainer(object):
     val_loss /= len(self.val_loader)
     val_metrics = self._mean_metrics(val_metrics, len(self.val_loader))
 
-    print("eval loss: %.3f" % val_loss)
+    print("global_step[%d/%d] eval loss: %.3f" % (self.global_step, self.max_iter, val_loss))
     print(val_metrics)
     if self.writer != None:
       self.writer.add_scalar('eval_loss', val_loss, self.global_step)
